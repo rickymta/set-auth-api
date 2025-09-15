@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using System.Security.Claims;
 using Set.Auth.Application.DTOs.Auth;
 using Set.Auth.Application.DTOs.User;
@@ -18,11 +19,13 @@ namespace Set.Auth.Api.Controllers;
 /// <param name="userService">The user service</param>
 /// <param name="permissionService">The permission service</param>
 /// <param name="roleService">The role service</param>
+/// <param name="configuration">The configuration service</param>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class UserController(IUserService userService, IPermissionService permissionService, IRoleService roleService) : BaseController
+public class UserController(IUserService userService, IPermissionService permissionService, IRoleService roleService, IConfiguration configuration) : BaseController
 {
+	private readonly IConfiguration _configuration = configuration;
 	/// <summary>
 	/// Retrieves current user's profile
 	/// </summary>
@@ -194,7 +197,6 @@ public class UserController(IUserService userService, IPermissionService permiss
 	/// <summary>
 	/// Updates a user (Admin only)
 	/// </summary>
-	/// <param name="id">User identifier</param>
 	/// <param name="updateDto">User update data</param>
 	/// <returns>Updated user information</returns>
 	/// <response code="200">User updated successfully</response>
@@ -519,32 +521,36 @@ public class UserController(IUserService userService, IPermissionService permiss
         }
 	}
 
-	/// <summary>
-	/// Uploads an avatar image for the current user
-	/// </summary>
-	/// <param name="avatarFile">The avatar image file</param>
-	/// <returns>Avatar upload result</returns>
-	/// <response code="200">Avatar uploaded successfully</response>
-	/// <response code="400">Invalid file or validation error</response>
-	/// <response code="401">Unauthorized</response>
-	/// <response code="404">User not found</response>
-	[HttpPost("avatar")]
+    /// <summary>
+    /// Uploads an avatar image for the current user
+    /// </summary>
+    /// <param name="avatarFile">The avatar image file</param>
+    /// <returns>Avatar upload result</returns>
+    /// <response code="200">Avatar uploaded successfully</response>
+    /// <response code="400">Invalid file or validation error</response>
+    /// <response code="401">Unauthorized</response>
+    /// <response code="404">User not found</response>
+    [HttpPost("avatar")]
 	[ProducesResponseType(typeof(object), 200)]
 	[ProducesResponseType(typeof(object), 400)]
 	[ProducesResponseType(401)]
 	[ProducesResponseType(404)]
+	[Consumes("multipart/form-data")]
 	public async Task<IActionResult> UploadAvatar([FromForm] IFormFile avatarFile)
 	{
 		try
 		{
 			var userId = GetCurrentUserId();
-			var avatarUrl = await userService.UploadAvatarAsync(userId, avatarFile);
+			var avatarFilename = await userService.UploadAvatarAsync(userId, avatarFile);
+
+			// Create full URL that client can use to access the image
+			var avatarUrl = CreateAvatarUrl(avatarFilename);
 
 			return Ok(new
 			{
 				success = true,
 				message = "Avatar uploaded successfully",
-				data = new { avatarUrl }
+				data = new { avatarUrl, filename = avatarFilename }
 			});
 		}
 		catch (Exception ex)
@@ -606,5 +612,11 @@ public class UserController(IUserService userService, IPermissionService permiss
 			".webp" => "image/webp",
 			_ => "application/octet-stream"
 		};
+	}
+
+	private string CreateAvatarUrl(string filename)
+	{
+		var baseUrl = _configuration["BaseUrl"] ?? "https://localhost:8080";
+		return $"{baseUrl}/api/user/avatar/{filename}";
 	}
 }

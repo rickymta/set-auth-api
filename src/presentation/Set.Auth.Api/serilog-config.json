@@ -1,23 +1,4 @@
 {
-  "ConnectionStrings": {
-    "DefaultConnection": "Server=192.168.1.127;Database=VolcanionAuth;User=root;Password=123456a@A;",
-    "Redis": "192.168.1.127:6379"
-  },
-  "JWT": {
-    "Secret": "YourSuperSecretKeyThatIsAtLeast256BitsLongForHMACSecurityRequirements",
-    "Issuer": "VolcanionAuthAPI",
-    "Audience": "VolcanionAuthAPI",
-    "AccessTokenExpiryMinutes": 15,
-    "RefreshTokenExpiryDays": 30
-  },
-  "MinIO": {
-    "Endpoint": "192.168.1.127:9000",
-    "AccessKey": "minioadmin",
-    "SecretKey": "minioadmin",
-    "BucketName": "set-auth-api",
-    "UseSSL": false
-  },
-  "BaseUrl": "https://localhost:7270",
   "Serilog": {
     "Using": [ "Serilog.Sinks.Console", "Serilog.Sinks.Elasticsearch" ],
     "MinimumLevel": {
@@ -30,7 +11,10 @@
     },
     "WriteTo": [
       {
-        "Name": "Console"
+        "Name": "Console",
+        "Args": {
+          "outputTemplate": "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}"
+        }
       },
       {
         "Name": "Elasticsearch",
@@ -39,7 +23,13 @@
           "indexFormat": "set-auth-{0:yyyy.MM.dd}",
           "autoRegisterTemplate": true,
           "numberOfShards": 1,
-          "numberOfReplicas": 0
+          "numberOfReplicas": 0,
+          "templateName": "set-logs",
+          "autoRegisterTemplateVersion": "ESv7",
+          "emitEventFailure": "WriteToSelfLog",
+          "failureCallback": "e",
+          "=>" "Console.WriteLine($\"Unable to submit event to Elasticsearch: {e.Message}\")",
+          "batchAction": "Create"
         }
       }
     ],
@@ -48,6 +38,5 @@
       "Application": "Set Auth API",
       "Environment": "Development"
     }
-  },
-  "AllowedHosts": "*"
+  }
 }

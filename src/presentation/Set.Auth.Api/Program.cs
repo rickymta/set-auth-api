@@ -1,7 +1,8 @@
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
+using Serilog.Sinks.Elasticsearch;
 using Set.Auth.Api.Extensions;
 using Set.Auth.Application.Extensions;
 using Set.Auth.Infrastructure.Extensions;
@@ -11,9 +12,29 @@ using System.Text;
 // Create the web application builder
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure Serilog for structured logging
+// Configure Serilog
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
+    .Enrich.FromLogContext()
+    .Enrich.WithMachineName()
+    .Enrich.WithEnvironmentName()
+    .Enrich.WithProcessId()
+    .Enrich.WithThreadId()
+    .Enrich.WithProperty("Application", "Volcanion Auth API")
+    .Enrich.WithProperty("Environment", builder.Environment.EnvironmentName)
+    .WriteTo.Console()
+    .WriteTo.Elasticsearch(new ElasticsearchSinkOptions(new Uri("http://localhost:9200"))
+    {
+        AutoRegisterTemplate = true,
+        IndexFormat = "set-auth-{0:yyyy.MM.dd}",
+        TemplateName = "set-api-logs",
+        NumberOfShards = 1,
+        NumberOfReplicas = 0,
+        AutoRegisterTemplateVersion = AutoRegisterTemplateVersion.ESv7,
+        FailureCallback = e => Console.WriteLine($"Unable to submit event to Elasticsearch: {e.MessageTemplate}"),
+        EmitEventFailure = EmitEventFailureHandling.WriteToSelfLog,
+        BatchAction = ElasticOpType.Create
+    })
     .CreateLogger();
 
 builder.Host.UseSerilog();

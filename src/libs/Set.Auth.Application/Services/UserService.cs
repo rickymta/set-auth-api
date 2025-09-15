@@ -1,6 +1,7 @@
 using AutoMapper;
 using FluentValidation;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Set.Auth.Application.DTOs.Auth;
 using Set.Auth.Application.DTOs.User;
 using Set.Auth.Application.Exceptions;
@@ -30,6 +31,7 @@ public class UserService(
     ICacheService cacheService,
     IPasswordService passwordService,
     IStorageService storageService,
+    IConfiguration configuration,
     IMapper mapper,
     IValidator<UpdateUserRequestDto> updateUserValidator,
     IValidator<ChangePasswordRequestDto> changePasswordValidator) : IUserService
@@ -40,6 +42,7 @@ public class UserService(
     private readonly ICacheService _cacheService = cacheService;
     private readonly IPasswordService _passwordService = passwordService;
     private readonly IStorageService _storageService = storageService;
+    private readonly IConfiguration _configuration = configuration;
     private readonly IMapper _mapper = mapper;
     private readonly IValidator<UpdateUserRequestDto> _updateUserValidator = updateUserValidator;
     private readonly IValidator<ChangePasswordRequestDto> _changePasswordValidator = changePasswordValidator;
@@ -56,11 +59,30 @@ public class UserService(
         if (user == null)
             return null;
 
+        var avatarUrl = "";
+        if (!string.IsNullOrEmpty(user.Avatar))
+        {
+            try
+            {
+                // Check if image exists in storage
+                using var stream = await _storageService.GetImageAsync(user.Avatar);
+                if (stream != null)
+                {
+                    // Return the API endpoint URL that client can use to access the image
+                    avatarUrl = CreateAvatarUrl(user.Avatar);
+                }
+            }
+            catch
+            {
+                avatarUrl = "";
+            }
+        }
+
+        user.Avatar = avatarUrl;
         var userDto = _mapper.Map<UserDto>(user);
         
         // Cache for 15 minutes
         await _cacheService.SetAsync($"user:{userId}", userDto, TimeSpan.FromMinutes(15));
-        
         return userDto;
     }
 
@@ -245,6 +267,26 @@ public class UserService(
             var userItem = _mapper.Map<UserListItemDto>(user);
             userItem.Roles = [.. user.UserRoles.Where(ur => ur.IsActive).Select(ur => ur.Role.Name)];
             userListItems.Add(userItem);
+            var avatarUrl = "";
+            if (!string.IsNullOrEmpty(user.Avatar))
+            {
+                try
+                {
+                    // Check if image exists in storage
+                    using var stream = await _storageService.GetImageAsync(user.Avatar);
+                    if (stream != null)
+                    {
+                        // Return the API endpoint URL that client can use to access the image
+                        avatarUrl = CreateAvatarUrl(user.Avatar);
+                    }
+                }
+                catch
+                {
+                    avatarUrl = "";
+                }
+            }
+
+            userItem.Avatar = avatarUrl;
         }
 
         return new UserListDto
@@ -503,24 +545,22 @@ public class UserService(
     public async Task<string> UploadAvatarAsync(Guid userId, IFormFile avatarFile)
     {
         if (avatarFile == null || avatarFile.Length == 0)
-            throw new Set.Auth.Application.Exceptions.ValidationException("Avatar file is required.");
+            throw new Exceptions.ValidationException("Avatar file is required.");
 
         // Validate file type
         var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif" };
         var fileExtension = Path.GetExtension(avatarFile.FileName).ToLowerInvariant();
         
         if (!allowedExtensions.Any(ext => ext == fileExtension))
-            throw new Set.Auth.Application.Exceptions.ValidationException("Only JPG, JPEG, PNG, and GIF files are allowed.");
+            throw new Exceptions.ValidationException("Only JPG, JPEG, PNG, and GIF files are allowed.");
 
         // Validate file size (max 5MB)
         const int maxFileSize = 5 * 1024 * 1024; // 5MB
         if (avatarFile.Length > maxFileSize)
-            throw new Set.Auth.Application.Exceptions.ValidationException("File size cannot exceed 5MB.");
+            throw new Exceptions.ValidationException("File size cannot exceed 5MB.");
 
         // Check if user exists
-        var user = await _userRepository.GetByIdAsync(userId);
-        if (user == null)
-            throw new NotFoundException($"User with ID {userId} not found.");
+        var user = await _userRepository.GetByIdAsync(userId) ?? throw new NotFoundException($"User with ID {userId} not found.");
 
         // Delete old avatar if exists
         if (!string.IsNullOrEmpty(user.Avatar))
@@ -537,7 +577,8 @@ public class UserService(
         }
 
         // Upload new avatar
-        var avatarUrl = await _storageService.UploadImageAsync(avatarFile, "avatars");
+        var avatarName = $"{Guid.NewGuid()}{fileExtension}";
+        var avatarUrl = await _storageService.UploadImageAsync(avatarFile, avatarName);
 
         // Update user's avatar URL
         user.Avatar = avatarUrl;
@@ -585,5 +626,16 @@ public class UserService(
     public async Task<Stream> GetAvatarAsync(string filename)
     {
         return await _storageService.GetImageAsync(filename);
+    }
+
+    /// <summary>
+    /// Creates a full avatar URL that client can use to access the image
+    /// </summary>
+    /// <param name="filename">The avatar filename</param>
+    /// <returns>Full avatar URL</returns>
+    private string CreateAvatarUrl(string filename)
+    {
+        var baseUrl = _configuration["BaseUrl"] ?? "https://localhost:8080";
+        return $"{baseUrl}/api/user/avatar/{filename}";
     }
 }
