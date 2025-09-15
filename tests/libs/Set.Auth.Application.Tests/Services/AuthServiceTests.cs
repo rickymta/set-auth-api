@@ -1,8 +1,10 @@
 using AutoFixture;
 using AutoMapper;
+using Castle.Core.Configuration;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
+using Microsoft.Extensions.Configuration;
 using Moq;
 using Set.Auth.Application.DTOs.Auth;
 using Set.Auth.Application.Interfaces;
@@ -20,6 +22,7 @@ public class AuthServiceTests
     private readonly Mock<ICacheService> _cacheServiceMock;
     private readonly Mock<IPasswordService> _passwordServiceMock;
     private readonly Mock<ITokenService> _tokenServiceMock;
+    private readonly Mock<IStorageService> _storageServiceMock;
     private readonly Mock<IMapper> _mapperMock;
     private readonly Mock<IValidator<LoginRequestDto>> _loginValidatorMock;
     private readonly Mock<IValidator<RegisterRequestDto>> _registerValidatorMock;
@@ -28,12 +31,17 @@ public class AuthServiceTests
 
     public AuthServiceTests()
     {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+            []
+        ).Build();
+
         _userRepositoryMock = new Mock<IUserRepository>();
         _roleRepositoryMock = new Mock<IRoleRepository>();
         _refreshTokenRepositoryMock = new Mock<IRefreshTokenRepository>();
         _cacheServiceMock = new Mock<ICacheService>();
         _passwordServiceMock = new Mock<IPasswordService>();
         _tokenServiceMock = new Mock<ITokenService>();
+        _storageServiceMock = new Mock<IStorageService>();
         _mapperMock = new Mock<IMapper>();
         _loginValidatorMock = new Mock<IValidator<LoginRequestDto>>();
         _registerValidatorMock = new Mock<IValidator<RegisterRequestDto>>();
@@ -46,6 +54,8 @@ public class AuthServiceTests
             _cacheServiceMock.Object,
             _passwordServiceMock.Object,
             _tokenServiceMock.Object,
+            _storageServiceMock.Object,
+            configuration,
             _mapperMock.Object,
             _loginValidatorMock.Object,
             _registerValidatorMock.Object);

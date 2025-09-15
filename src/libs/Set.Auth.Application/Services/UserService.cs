@@ -82,7 +82,7 @@ public class UserService(
         var userDto = _mapper.Map<UserDto>(user);
         
         // Cache for 15 minutes
-        await _cacheService.SetAsync($"user:{userId}", userDto, TimeSpan.FromMinutes(15));
+        await _cacheService.SetAsync($"user:{userId}", userDto, TimeSpan.FromDays(30));
         return userDto;
     }
 

@@ -1,5 +1,6 @@
 using AutoMapper;
 using FluentValidation;
+using Microsoft.Extensions.Configuration;
 using Set.Auth.Application.DTOs.Auth;
 using Set.Auth.Application.Exceptions;
 using Set.Auth.Application.Interfaces;
@@ -29,6 +30,8 @@ public class AuthService(
     ICacheService cacheService,
     IPasswordService passwordService,
     ITokenService tokenService,
+    IStorageService storageService,
+    IConfiguration configuration,
     IMapper mapper,
     IValidator<LoginRequestDto> loginValidator,
     IValidator<RegisterRequestDto> registerValidator) : IAuthService
@@ -87,6 +90,26 @@ public class AuthService(
 
         await refreshTokenRepository.CreateAsync(refreshTokenEntity);
 
+        var avatarUrl = "";
+        if (!string.IsNullOrEmpty(user.Avatar))
+        {
+            try
+            {
+                // Check if image exists in storage
+                using var stream = await storageService.GetImageAsync(user.Avatar);
+                if (stream != null)
+                {
+                    // Return the API endpoint URL that client can use to access the image
+                    avatarUrl = CreateAvatarUrl(user.Avatar);
+                }
+            }
+            catch
+            {
+                avatarUrl = "";
+            }
+        }
+
+        user.Avatar = avatarUrl;
         // Cache user data
         await cacheService.SetAsync($"user:{user.Id}", mapper.Map<UserDto>(user), TimeSpan.FromMinutes(15));
 
@@ -236,7 +259,11 @@ public class AuthService(
     /// <inheritdoc/>
     public async Task LogoutAsync(LogoutRequestDto request, string? ipAddress = null)
     {
-        await refreshTokenRepository.RevokeAsync(request.RefreshToken, ipAddress);
+        var userId = await refreshTokenRepository.RevokeAsync(request.RefreshToken, ipAddress);
+        if (userId != null)
+        {
+            await cacheService.RemoveAsync($"user:{userId}");
+        }
     }
 
     /// <inheritdoc/>
@@ -254,5 +281,16 @@ public class AuthService(
     public Task<bool> ValidateTokenAsync(string token)
     {
         return Task.FromResult(tokenService.ValidateToken(token));
+    }
+
+    /// <summary>
+    /// Creates a full avatar URL that client can use to access the image
+    /// </summary>
+    /// <param name="filename">The avatar filename</param>
+    /// <returns>Full avatar URL</returns>
+    private string CreateAvatarUrl(string filename)
+    {
+        var baseUrl = configuration["BaseUrl"] ?? "https://localhost:8080";
+        return $"{baseUrl}/api/user/avatar/{filename}";
     }
 }

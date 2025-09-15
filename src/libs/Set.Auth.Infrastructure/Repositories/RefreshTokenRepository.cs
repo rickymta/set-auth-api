@@ -51,9 +51,26 @@ public class RefreshTokenRepository(AuthDbContext context) : IRefreshTokenReposi
     /// <inheritdoc />
     public async Task<RefreshToken> UpdateAsync(RefreshToken refreshToken)
     {
-        context.RefreshTokens.Update(refreshToken);
-        await context.SaveChangesAsync();
-        return refreshToken;
+        // Only update RefreshToken fields, not the User navigation property
+        var existingToken = await context.RefreshTokens.FindAsync(refreshToken.Id);
+        if (existingToken != null)
+        {
+            existingToken.Token = refreshToken.Token;
+            existingToken.DeviceId = refreshToken.DeviceId;
+            existingToken.DeviceName = refreshToken.DeviceName;
+            existingToken.UserAgent = refreshToken.UserAgent;
+            existingToken.IpAddress = refreshToken.IpAddress;
+            existingToken.ExpiresAt = refreshToken.ExpiresAt;
+            existingToken.UsedAt = refreshToken.UsedAt;
+            existingToken.RevokedAt = refreshToken.RevokedAt;
+            existingToken.RevokedByIp = refreshToken.RevokedByIp;
+            existingToken.ReplacedByToken = refreshToken.ReplacedByToken;
+            
+            await context.SaveChangesAsync();
+            return existingToken;
+        }
+        
+        throw new InvalidOperationException($"RefreshToken with ID {refreshToken.Id} not found");
     }
 
     /// <inheritdoc />
@@ -68,15 +85,18 @@ public class RefreshTokenRepository(AuthDbContext context) : IRefreshTokenReposi
     }
 
     /// <inheritdoc />
-    public async Task RevokeAsync(string token, string? revokedByIp = null)
+    public async Task<Guid?> RevokeAsync(string token, string? revokedByIp = null)
     {
-        var refreshToken = await GetByTokenAsync(token);
+        var refreshToken = await GetByTokenWithoutUserAsync(token);
         if (refreshToken != null && refreshToken.IsActive)
         {
             refreshToken.RevokedAt = DateTime.UtcNow;
             refreshToken.RevokedByIp = revokedByIp;
             await UpdateAsync(refreshToken);
+            return refreshToken.UserId;
         }
+
+        return null;
     }
 
     /// <inheritdoc />
@@ -125,5 +145,16 @@ public class RefreshTokenRepository(AuthDbContext context) : IRefreshTokenReposi
             context.RefreshTokens.RemoveRange(expiredTokens);
             await context.SaveChangesAsync();
         }
+    }
+
+    /// <summary>
+    /// Gets a refresh token by token value without including User navigation property
+    /// </summary>
+    /// <param name="token">The token value</param>
+    /// <returns>The refresh token without User data</returns>
+    private async Task<RefreshToken?> GetByTokenWithoutUserAsync(string token)
+    {
+        return await context.RefreshTokens
+            .FirstOrDefaultAsync(rt => rt.Token == token);
     }
 }

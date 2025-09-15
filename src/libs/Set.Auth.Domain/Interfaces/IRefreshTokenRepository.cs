@@ -55,7 +55,7 @@ public interface IRefreshTokenRepository
     /// <param name="token"></param>
     /// <param name="revokedByIp"></param>
     /// <returns></returns>
-    Task RevokeAsync(string token, string? revokedByIp = null);
+    Task<Guid?> RevokeAsync(string token, string? revokedByIp = null);
 
     /// <summary>
     /// Revokes all refresh tokens for a specific user
