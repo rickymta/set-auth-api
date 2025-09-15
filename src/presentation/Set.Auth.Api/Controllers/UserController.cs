@@ -524,7 +524,7 @@ public class UserController(IUserService userService, IPermissionService permiss
     /// <summary>
     /// Uploads an avatar image for the current user
     /// </summary>
-    /// <param name="avatarFile">The avatar image file</param>
+    /// <param name="request">Avatar upload request containing the image file</param>
     /// <returns>Avatar upload result</returns>
     /// <response code="200">Avatar uploaded successfully</response>
     /// <response code="400">Invalid file or validation error</response>
@@ -536,12 +536,12 @@ public class UserController(IUserService userService, IPermissionService permiss
 	[ProducesResponseType(401)]
 	[ProducesResponseType(404)]
 	[Consumes("multipart/form-data")]
-	public async Task<IActionResult> UploadAvatar([FromForm] IFormFile avatarFile)
+	public async Task<IActionResult> UploadAvatar([FromForm] AvatarUploadDto request)
 	{
 		try
 		{
 			var userId = GetCurrentUserId();
-			var avatarFilename = await userService.UploadAvatarAsync(userId, avatarFile);
+			var avatarFilename = await userService.UploadAvatarAsync(userId, request.AvatarFile);
 
 			// Create full URL that client can use to access the image
 			var avatarUrl = CreateAvatarUrl(avatarFilename);
